@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup
 import links
 from structures.user import User
 from structures.task import Task
+from utils.capture_eq import CaptureEq
+import data
 
 
 def get_user_info_from_table(user, info_table):
@@ -18,14 +20,20 @@ def get_user_info_from_table(user, info_table):
     user.set_rating(rating)
 
 
-def get_user(link: str) -> User:
+def get_user(link: str, force_update=False) -> User:
     """
     Get an user from his profile(status) page.
     :param link: A link to profile(status) page.
+    :param force_update: If it is False, the user will be downloaded from the site only if it doesn't exists in
+    data.users. If it is True, the user will be downloaded and updated anyway.
     :return: The user with information from the profile.
     """
     user_id = link.rsplit('?', 1)[0].split('/')[-1]
     user = User(user_id, user_link=link)
+
+    if not force_update:
+        if user.user_id in data.users:
+            return data.users.get(user.user_id)
 
     user_page = requests.get(link)
     parsed_user_page = BeautifulSoup(user_page.text, 'html.parser')
@@ -43,6 +51,7 @@ def get_user(link: str) -> User:
         solved_tasks.append(task_id)
     user.set_solved_tasks(solved_tasks)
 
+    data.users[user.user_id] = user
     return user
 
 

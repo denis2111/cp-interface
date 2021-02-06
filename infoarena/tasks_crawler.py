@@ -6,15 +6,25 @@ import re
 from bs4 import BeautifulSoup
 import links
 from structures.task import Task
+from utils.capture_eq import CaptureEq
+import data
 
 
-def get_task(link: str) -> Task:
+def get_task(link: str, force_update=False) -> Task:
     """
     Get all information about a task from it's page.
+    :param force_update: If it is False, the task will be downloaded from the site only if it doesn't exists in
+    data.tasks. If it is True, the task will be downloaded and updated anyway.
     :param link:
     :return:
     """
     task = Task(task_id=link.rsplit('/', 1)[-1], link_name=link.rsplit('/', 1)[-1], task_link=link)
+
+    if not force_update:
+        if task.task_id in data.tasks:
+            return data.tasks.get(task.task_id)
+    print("Update task: ", task.task_id)
+
     task_page = requests.get(link)
     parsed_task_page = BeautifulSoup(task_page.text, 'html.parser')
 
@@ -31,7 +41,7 @@ def get_task(link: str) -> Task:
     parsed_task_page.find_all("p")[0].decompose()
     parsed_task_page.find_all("p")[0].decompose()
 
-    examples_table = parsed_task_page.find_all("table", attrs={'class': 'example'})[0]
+    examples_table = parsed_task_page.find_all("table", attrs={'class': 'example'})[-1]
     _extract_examples_from_table(task, examples_table)
 
     for element in examples_table.fetchNextSiblings():
@@ -40,12 +50,15 @@ def get_task(link: str) -> Task:
 
     task.set_statement(parsed_task_page.text)
 
+    data.tasks[task.task_id] = task
     return task
 
 
-def get_tasks_from_page(link: str):
+def get_tasks_from_page(link: str, force_update=False):
     """
     Get all tasks from a page of archive.
+    :param force_update: If it is False, the task will be downloaded from the site only if it doesn't exists in
+    data.tasks. If it is True, the task will be downloaded and updated anyway.
     :param link:
     :return:
     """
@@ -62,16 +75,18 @@ def get_tasks_from_page(link: str):
 
         task_path = str(task.find('a').get('href'))
         task_url = links.root + task_path
-        task = get_task(task_url)
+        task = get_task(task_url, force_update)
         tasks.append(task)
 
     return tasks
 
 
-def get_all_tasks():
+def get_all_tasks(force_update=False):
     """
     Get all tasks from infoarena and return them as an array of Task.
     It get only tasks from main archive.
+    :param force_update: If it is False, the task will be downloaded from the site only if it doesn't exists in
+    data.tasks. If it is True, the task will be downloaded and updated anyway.
     :return:
     """
     tasks_page = requests.get(links.tasks_page)
@@ -82,14 +97,14 @@ def get_all_tasks():
     }
     tasks_pages = parsed_tasks_page.find_all('a', attrs=attrs)
 
-    tasks = get_tasks_from_page(links.tasks_page)
+    tasks = get_tasks_from_page(links.tasks_page, force_update)
     visited_links = set()
     for tasks_page in tasks_pages:
         tasks_page_link = links.root + tasks_page.get("href")
         if tasks_page_link in visited_links:
             continue
         visited_links.add(tasks_page_link)
-        tasks.extend(get_tasks_from_page(tasks_page_link))
+        tasks.extend(get_tasks_from_page(tasks_page_link, force_update))
 
     return tasks
 
@@ -127,12 +142,13 @@ def _extract_examples_from_table(task, table):
     out_file_name = rows[0].find_all("th")[1].text
     task.set_out_file_name(out_file_name)
 
-    examples = ()
+    examples = []
     for example_row in rows[1:]:
         example = {
             "in": example_row.find_all("td")[0].text,
             "out": example_row.find_all("td")[1].text,
         }
         examples.append(example)
-    task.set_examples(examples)
+    task.set_examples(tuple(examples))
+
 
