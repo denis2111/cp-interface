@@ -1,0 +1,1 @@
+INFOARENA_PREFIX = 'ia'
